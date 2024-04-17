@@ -1,0 +1,12 @@
+{
+  "idf.flashType": "UART",
+  "idf.portWin": "COM3",
+  "files.associations": {
+    "*.ejs": "html",
+    "esp_lcd_panel_io.h": "c",
+    "esp_lcd_panel_vendor.h": "c",
+    "esp_lcd_panel_ops.h": "c"
+  },
+  "C_Cpp.errorSquiggles": "enabled",
+  "idf.adapterTargetName": "esp32"
+}
