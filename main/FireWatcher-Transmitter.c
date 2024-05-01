@@ -8,8 +8,6 @@
 
 #define DHT_PIN 17 // GPIO 17
 
-#define MQ2_PIN 2 // GPIO 2
-
 #include "driver/i2c_master.h"
 
 #include "esp_lcd_panel_io.h"
@@ -54,7 +52,8 @@ static void custom_adc_calibration_deinit(adc_cali_handle_t handle);
 
 lv_disp_t *disp;
 
-void display_oled(int16_t *temperature, int16_t *humidity) {
+void display_oled(int16_t *temperature, int16_t *humidity, int16_t *smoke,
+                  int16_t *calSmokeVoltage) {
 
   lv_obj_t *scr = lv_disp_get_scr_act(disp);
 
@@ -66,8 +65,9 @@ void display_oled(int16_t *temperature, int16_t *humidity) {
   // lv_label_set_long_mode(label,
   //                        LV_LABEL_LONG_SCROLL_CIRCULAR); /* Circular scroll
   //                        */
-  lv_label_set_text_fmt(label, "Temperature:%dC\nHumidity: %d%%\n",
-                        *temperature, *humidity);
+  lv_label_set_text_fmt(
+      label, "Temperature:%dC\nHumidity: %d%%\nSmoke: %d\nVoltage: %d\n",
+      *temperature, *humidity, *smoke, *calSmokeVoltage);
   // lv_label_set_text_fmt(label, "Humidity: %.2f%%\n", *humidity);
 
   /* Size of the screen (if you use rotation 90 or 270, please set
@@ -75,6 +75,7 @@ void display_oled(int16_t *temperature, int16_t *humidity) {
   lv_obj_set_width(label, disp->driver->hor_res);
   lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 0);
 }
+
 void setupOled() {
 
   ESP_LOGI("SetupOled", "Initialize I2C bus");
@@ -185,19 +186,22 @@ void app_main(void) {
 
   setupOled();
   setupADC();
+  int16_t humidity, temperature;
+  int16_t rawSmoke, calSmokeVoltage;
   while (1) {
-    int16_t humidity, temperature;
     dht_read_data(DHT_TYPE_DHT11, DHT_PIN, &humidity, &temperature);
     humidity = humidity / 10;
     temperature = temperature / 10;
 
     readADC();
+    rawSmoke = adc_raw[0][0];
+    calSmokeVoltage = voltage[0][0];
 
-    printf("Humidity: %d%% Temp: %dC\n", humidity, temperature);
+    // printf("Humidity: %d%% Temp: %dC\n", &humidity, &temperature);
     // Lock the mutex due to the LVGL APIs are not thread-safe
     if (lvgl_port_lock(0)) {
 
-      display_oled(&temperature, &humidity);
+      display_oled(&temperature, &humidity, &rawSmoke, &calSmokeVoltage);
       // Release the mutex
       lvgl_port_unlock();
     }
