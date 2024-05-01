@@ -5,7 +5,11 @@
     "*.ejs": "html",
     "esp_lcd_panel_io.h": "c",
     "esp_lcd_panel_vendor.h": "c",
-    "esp_lcd_panel_ops.h": "c"
+    "esp_lcd_panel_ops.h": "c",
+    "i2c_master.h": "c",
+    "adc_cali_scheme.h": "c",
+    "adc_cali.h": "c",
+    "adc_oneshot.h": "c"
   },
   "C_Cpp.errorSquiggles": "enabled",
   "idf.adapterTargetName": "esp32"
