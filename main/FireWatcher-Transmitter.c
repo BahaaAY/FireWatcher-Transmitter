@@ -42,10 +42,16 @@
 #define ADC2_CHAN2 ADC_CHANNEL_2 // GPIO 2
 static int adc_raw[2][10];
 static int voltage[2][10];
+
+adc_oneshot_unit_handle_t adc2_handle;
+adc_cali_handle_t adc2_cali_chan2_handle = NULL;
+bool do_calibration2_chan2 = false;
+
 static bool custom_adc_calibration_init(adc_unit_t unit, adc_channel_t channel,
                                         adc_atten_t atten,
                                         adc_cali_handle_t *out_handle);
 static void custom_adc_calibration_deinit(adc_cali_handle_t handle);
+
 lv_disp_t *disp;
 
 void display_oled(int16_t *temperature, int16_t *humidity) {
@@ -60,7 +66,6 @@ void display_oled(int16_t *temperature, int16_t *humidity) {
   // lv_label_set_long_mode(label,
   //                        LV_LABEL_LONG_SCROLL_CIRCULAR); /* Circular scroll
   //                        */
-  printf("Temperature: %dC\n", *temperature);
   lv_label_set_text_fmt(label, "Temperature:%dC\nHumidity: %d%%\n",
                         *temperature, *humidity);
   // lv_label_set_text_fmt(label, "Humidity: %.2f%%\n", *humidity);
@@ -139,7 +144,6 @@ void setupOled() {
 void setupADC() {
   const static char *TAG = "ADC_SETUP";
   //-------------ADC2 Init---------------//
-  adc_oneshot_unit_handle_t adc2_handle;
   adc_oneshot_unit_init_cfg_t init_config2 = {
       .unit_id = ADC_UNIT_2,
       .ulp_mode = ADC_ULP_MODE_DISABLE,
@@ -154,44 +158,40 @@ void setupADC() {
   ESP_ERROR_CHECK(adc_oneshot_config_channel(adc2_handle, ADC2_CHAN2, &config));
 
   //-------------ADC2 Calibration Init---------------//
-  adc_cali_handle_t adc2_cali_chan2_handle = NULL;
 
-  bool do_calibration2_chan2 = custom_adc_calibration_init(
+  do_calibration2_chan2 = custom_adc_calibration_init(
       ADC_UNIT_2, ADC2_CHAN2, ADC_ATTEN, &adc2_cali_chan2_handle);
 
-  while (1) {
-    ESP_ERROR_CHECK(adc_oneshot_read(adc2_handle, ADC2_CHAN2, &adc_raw[0][0]));
-    ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_2 + 1, ADC2_CHAN2,
-             adc_raw[0][0]);
-    if (do_calibration2_chan2) {
-      ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc2_cali_chan2_handle,
-                                              adc_raw[0][0], &voltage[0][0]));
-      ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_2 + 1,
-               ADC2_CHAN2, voltage[0][0]);
-    }
-    vTaskDelay(pdMS_TO_TICKS(1000));
+  // // Tear Down
+  // ESP_ERROR_CHECK(adc_oneshot_del_unit(adc2_handle));
+  // if (do_calibration2_chan2) {
+  //   custom_adc_calibration_deinit(adc2_cali_chan2_handle);
+  // }
+}
 
-    ESP_ERROR_CHECK(adc_oneshot_read(adc2_handle, ADC2_CHAN2, &adc_raw[0][1]));
-    ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_2 + 1, ADC2_CHAN2,
-             adc_raw[0][1]);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
-
-  // Tear Down
-  ESP_ERROR_CHECK(adc_oneshot_del_unit(adc2_handle));
+void readADC() {
+  const static char *TAG = "ADC_READ";
+  ESP_ERROR_CHECK(adc_oneshot_read(adc2_handle, ADC2_CHAN2, &adc_raw[0][0]));
+  ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_2 + 1, ADC2_CHAN2,
+           adc_raw[0][0]);
   if (do_calibration2_chan2) {
-    custom_adc_calibration_deinit(adc2_cali_chan2_handle);
+    ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc2_cali_chan2_handle,
+                                            adc_raw[0][0], &voltage[0][0]));
+    ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_2 + 1,
+             ADC2_CHAN2, voltage[0][0]);
   }
 }
 void app_main(void) {
 
   setupOled();
-
+  setupADC();
   while (1) {
     int16_t humidity, temperature;
     dht_read_data(DHT_TYPE_DHT11, DHT_PIN, &humidity, &temperature);
     humidity = humidity / 10;
     temperature = temperature / 10;
+
+    readADC();
 
     printf("Humidity: %d%% Temp: %dC\n", humidity, temperature);
     // Lock the mutex due to the LVGL APIs are not thread-safe
@@ -202,7 +202,6 @@ void app_main(void) {
       lvgl_port_unlock();
     }
     vTaskDelay(2000 / portTICK_PERIOD_MS);
-    setupADC();
   }
 }
 
