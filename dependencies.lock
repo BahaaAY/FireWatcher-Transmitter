@@ -1,4 +1,10 @@
 dependencies:
+  dernasherbrezon/sx127x:
+    component_hash: 98fa3fd80e015566ff47ecb4bf5d0d096fb25958f2345e1d440adb1ce8351349
+    source:
+      service_url: https://api.components.espressif.com/
+      type: service
+    version: 3.1.2
   espressif/esp_lvgl_port:
     component_hash: b43dc04720d126cbfe14d53a84787e4c24b7bd7f15468e224c930ad3ffb32258
     source:
@@ -16,6 +22,6 @@ dependencies:
       service_url: https://api.components.espressif.com/
       type: service
     version: 8.3.11
-manifest_hash: 9e27eff9da8872a67aa2fb60bfa4e324d7f638109946a7db790413ae8d2a1e77
+manifest_hash: 7d5a5e4f1c5be529ae1328d56d2a25e8211d1be4d6f94783d45343c7249a2234
 target: esp32
 version: 1.0.0

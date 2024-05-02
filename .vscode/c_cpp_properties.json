@@ -1,18 +1,26 @@
 {
   "configurations": [
     {
-      "name": "Win32",
+      "name": "ESP-IDF",
+      "compilerPath": "C:/Users/BahaaAY/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20230928/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
       "includePath": [
-        "${workspaceFolder}/**",
-        "${workspaceFolder}/managed_components"
+        "${config:idf.espIdfPath}/components/**",
+        "${config:idf.espIdfPathWin}/components/**",
+        "${config:idf.espAdfPath}/components/**",
+        "${config:idf.espAdfPathWin}/components/**",
+        "${workspaceFolder}/**"
       ],
-      "defines": ["_DEBUG", "UNICODE", "_UNICODE"],
-      "windowsSdkVersion": "10.0.22621.0",
-      "compilerPath": "cl.exe",
-      "cStandard": "c23",
-      "cppStandard": "c++23",
-      "intelliSenseMode": "windows-msvc-x64",
-      "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+      "browse": {
+        "path": [
+          "${config:idf.espIdfPath}/components",
+          "${config:idf.espIdfPathWin}/components",
+          "${config:idf.espAdfPath}/components/**",
+          "${config:idf.espAdfPathWin}/components/**",
+          "${workspaceFolder}"
+        ],
+        "limitSymbolsToIncludedHeaders": false
+      }
     }
   ],
   "version": 4
