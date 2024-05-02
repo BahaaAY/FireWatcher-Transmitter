@@ -1,10 +1,12 @@
+#include <stdint.h>
+#include <stdio.h>
+
 #include "dht.h"
 #include "esp_attr.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <stdio.h>
 
 #include <driver/gpio.h>
 #include <driver/spi_common.h>
@@ -61,10 +63,23 @@ adc_oneshot_unit_handle_t adc2_handle;
 adc_cali_handle_t adc2_cali_chan2_handle = NULL;
 bool do_calibration2_chan2 = false;
 
+uint8_t dataArray[8];
+
+// This Maro is used to pack 2 ADC 12-bit values (raw adc output and the
+// calibrated one) into 3 bytes buffer
+#define PACK_12BIT_TO_3BYTES(value1, value2, buffer)                           \
+  do {                                                                         \
+    buffer[0] = (value1 >> 4) & 0xFF;                                          \
+    buffer[1] = ((value1 & 0x0F) << 4) | ((value2 >> 8) & 0x0F);               \
+    buffer[2] = value2 & 0xFF;                                                 \
+  } while (0)
+
 static bool custom_adc_calibration_init(adc_unit_t unit, adc_channel_t channel,
                                         adc_atten_t atten,
                                         adc_cali_handle_t *out_handle);
 static void custom_adc_calibration_deinit(adc_cali_handle_t handle);
+
+char *TAG = "MAIN";
 
 lv_disp_t *disp;
 
@@ -93,8 +108,8 @@ void display_oled(int16_t *temperature, int16_t *humidity, int16_t *smoke,
 }
 
 void setupOled() {
-
-  ESP_LOGI("SetupOled", "Initialize I2C bus");
+  TAG = "SETUP_OLED";
+  ESP_LOGI(TAG, "Initialize I2C bus");
   i2c_master_bus_handle_t i2c_bus = NULL;
   i2c_master_bus_config_t bus_config = {
       .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -106,7 +121,7 @@ void setupOled() {
   };
   ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &i2c_bus));
 
-  ESP_LOGI("SetupOled", "Install panel IO");
+  ESP_LOGI(TAG, "Install panel IO");
   esp_lcd_panel_io_handle_t io_handle = NULL;
   esp_lcd_panel_io_i2c_config_t io_config = {
       .dev_addr = OLED_I2C_HW_ADDR,
@@ -118,7 +133,7 @@ void setupOled() {
   };
 
   ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c_bus, &io_config, &io_handle));
-  ESP_LOGI("SetupOled", "Install SSD1306 panel driver");
+  ESP_LOGI(TAG, "Install SSD1306 panel driver");
   esp_lcd_panel_handle_t panel_handle = NULL;
   esp_lcd_panel_dev_config_t panel_config = {
       .bits_per_pixel = 1,
@@ -132,8 +147,8 @@ void setupOled() {
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
   // setup lvgl
-
-  ESP_LOGI("SetupOled", "Initialize LVGL");
+  TAG = "LVGL_SETUP";
+  ESP_LOGI(TAG, "Initialize LVGL");
   const lvgl_port_cfg_t lvgl_cfg = ESP_LVGL_PORT_INIT_CONFIG();
   lvgl_port_init(&lvgl_cfg);
 
@@ -155,11 +170,11 @@ void setupOled() {
   /* Rotation of the screen */
   lv_disp_set_rotation(disp, LV_DISP_ROT_NONE);
 
-  ESP_LOGI("END", "Display LVGL Scroll Text");
+  ESP_LOGI(TAG, "Display LVGL Scroll Text");
 }
 
 void setupADC() {
-  const static char *TAG = "ADC_SETUP";
+  TAG = "ADC_SETUP";
   //-------------ADC2 Init---------------//
   adc_oneshot_unit_init_cfg_t init_config2 = {
       .unit_id = ADC_UNIT_2,
@@ -187,7 +202,7 @@ void setupADC() {
 }
 
 void readADC() {
-  const static char *TAG = "ADC_READ";
+  TAG = "ADC_READ";
   ESP_ERROR_CHECK(adc_oneshot_read(adc2_handle, ADC2_CHAN2, &adc_raw[0][0]));
   ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_2 + 1, ADC2_CHAN2,
            adc_raw[0][0]);
@@ -201,11 +216,17 @@ void readADC() {
 
 // // LORA START
 
-static const char *TAG = "sx127x";
-
 sx127x *device = NULL;
 int messages_sent = 0;
 TaskHandle_t handle_interrupt;
+
+void transmit_data(sx127x *device, uint8_t data[8], size_t size) {
+  TAG = "TRANSMIT";
+  ESP_LOGI(TAG, "Transmitting");
+  ESP_ERROR_CHECK(sx127x_fsk_ook_tx_set_for_transmission(data, size, device));
+  ESP_ERROR_CHECK(
+      sx127x_set_opmod(SX127x_MODE_TX, SX127x_MODULATION_FSK, device));
+}
 
 void IRAM_ATTR handle_interrupt_fromisr(void *arg) {
   xTaskResumeFromISR(handle_interrupt);
@@ -219,110 +240,11 @@ void handle_interrupt_task(void *arg) {
 }
 
 void tx_callback(sx127x *device) {
+  TAG = "TX_CALLBACK";
+  ESP_LOGI(TAG, "Message Transmitted %d", messages_sent);
+  messages_sent++;
   ESP_ERROR_CHECK(
       sx127x_set_opmod(SX127x_MODE_STANDBY, SX127x_MODULATION_FSK, device));
-  if (messages_sent > 0) {
-    ESP_LOGI(TAG, "transmitted");
-    ESP_LOGI(TAG, "messages_sent: %d", messages_sent);
-  }
-  if (messages_sent == 0 || 1) {
-    uint8_t data[] = {0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00};
-    ESP_ERROR_CHECK(
-        sx127x_fsk_ook_tx_set_for_transmission(data, sizeof(data), device));
-  } else if (messages_sent == 1) {
-    uint8_t data[] = {0xFF, 0x00};
-    ESP_ERROR_CHECK(
-        sx127x_fsk_ook_tx_set_for_transmission(data, sizeof(data), device));
-  } else if (messages_sent == 2) {
-    uint8_t data[] = {0xAA, 0xAA, 0xFF, 0xFF, 0x00, 0x00};
-    ESP_ERROR_CHECK(
-        sx127x_fsk_ook_tx_set_for_transmission(data, sizeof(data), device));
-  } else if (messages_sent == 3) {
-    // 63 bytes max for variable to fit into FIFO
-    uint8_t data[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                      0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
-                      0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a,
-                      0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23,
-                      0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c,
-                      0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35,
-                      0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e};
-    ESP_ERROR_CHECK(
-        sx127x_fsk_ook_tx_set_for_transmission(data, sizeof(data), device));
-  } else if (messages_sent == 4) {
-    // 255 bytes will trigger batches
-    uint8_t data[] = {
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
-        0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23,
-        0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
-        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b,
-        0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
-        0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53,
-        0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f,
-        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b,
-        0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
-        0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83,
-        0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f,
-        0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b,
-        0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7,
-        0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3,
-        0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf,
-        0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb,
-        0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7,
-        0xd8, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3,
-        0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef,
-        0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb,
-        0xfc, 0xfd, 0xfe};
-    ESP_ERROR_CHECK(
-        sx127x_fsk_ook_tx_set_for_transmission(data, sizeof(data), device));
-  } else if (messages_sent == 5) {
-    // 62 bytes max for variable with address to fit into FIFO
-    uint8_t data[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-                      0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11,
-                      0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a,
-                      0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23,
-                      0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c,
-                      0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35,
-                      0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d};
-    ESP_ERROR_CHECK(sx127x_fsk_ook_tx_set_for_transmission_with_address(
-        data, sizeof(data), 0x11, device));
-  } else if (messages_sent == 6) {
-    // 254 byte with address will trigger batches
-    uint8_t data[] = {
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
-        0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23,
-        0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
-        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b,
-        0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
-        0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50, 0x51, 0x52, 0x53,
-        0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f,
-        0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b,
-        0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
-        0x78, 0x79, 0x7a, 0x7b, 0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83,
-        0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f,
-        0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b,
-        0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7,
-        0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3,
-        0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf,
-        0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb,
-        0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7,
-        0xd8, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf, 0xe0, 0xe1, 0xe2, 0xe3,
-        0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef,
-        0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb,
-        0xfc, 0xfd};
-    ESP_ERROR_CHECK(sx127x_fsk_ook_tx_set_for_transmission_with_address(
-        data, sizeof(data), 0x11, device));
-  } else {
-    // FSK mode require manual switch from TX to Standby
-    ESP_ERROR_CHECK(
-        sx127x_set_opmod(SX127x_MODE_STANDBY, SX127x_MODULATION_FSK, device));
-    return;
-  }
-  ESP_ERROR_CHECK(
-      sx127x_set_opmod(SX127x_MODE_TX, SX127x_MODULATION_FSK, device));
-  ESP_LOGI(TAG, "transmitting");
-  messages_sent++;
 }
 
 void setup_gpio_interrupts(gpio_num_t gpio, sx127x *device,
@@ -335,6 +257,26 @@ void setup_gpio_interrupts(gpio_num_t gpio, sx127x *device,
 }
 
 // // LORA END
+
+void packData(uint8_t dataArray[8], int16_t humidity, int16_t temperature,
+              int16_t rawSmoke, int16_t calSmokeVoltage) {
+
+  // Pack humidity
+  dataArray[0] = (uint8_t)(humidity & 0xFF);        // Lower 8 bits
+  dataArray[1] = (uint8_t)((humidity >> 8) & 0xFF); // Upper 8 bits
+
+  // Pack temperature
+  dataArray[2] = (uint8_t)(temperature & 0xFF);
+  dataArray[3] = (uint8_t)((temperature >> 8) & 0xFF);
+
+  // Pack rawSmoke
+  dataArray[4] = (uint8_t)(rawSmoke & 0xFF);
+  dataArray[5] = (uint8_t)((rawSmoke >> 8) & 0xFF);
+
+  // Pack calSmokeVoltage
+  dataArray[6] = (uint8_t)(calSmokeVoltage & 0xFF);
+  dataArray[7] = (uint8_t)((calSmokeVoltage >> 8) & 0xFF);
+}
 
 void app_main(void) {
 
@@ -365,7 +307,7 @@ void app_main(void) {
   ESP_ERROR_CHECK(sx127x_create(spi_device, &device));
   ESP_ERROR_CHECK(
       sx127x_set_opmod(SX127x_MODE_SLEEP, SX127x_MODULATION_FSK, device));
-  ESP_ERROR_CHECK(sx127x_set_frequency(437200012, device));
+  ESP_ERROR_CHECK(sx127x_set_frequency(915000000, device));
   ESP_ERROR_CHECK(
       sx127x_set_opmod(SX127x_MODE_STANDBY, SX127x_MODULATION_FSK, device));
   ESP_ERROR_CHECK(sx127x_fsk_ook_set_bitrate(4800.0, device));
@@ -380,7 +322,7 @@ void app_main(void) {
       sx127x_fsk_ook_set_packet_format(SX127X_VARIABLE, 255, device));
   ESP_ERROR_CHECK(
       sx127x_fsk_set_data_shaping(SX127X_BT_0_5, SX127X_PA_RAMP_10, device));
-  ESP_ERROR_CHECK(sx127x_tx_set_pa_config(SX127x_PA_PIN_BOOST, 4, device));
+  ESP_ERROR_CHECK(sx127x_tx_set_pa_config(SX127x_PA_PIN_BOOST, 20, device));
   ESP_ERROR_CHECK(sx127x_fsk_ook_set_crc(SX127X_CRC_CCITT, device));
 
   sx127x_tx_set_callback(tx_callback, device);
@@ -408,7 +350,6 @@ void app_main(void) {
     rawSmoke = adc_raw[0][0];
     calSmokeVoltage = voltage[0][0];
 
-    // printf("Humidity: %d%% Temp: %dC\n", &humidity, &temperature);
     // Lock the mutex due to the LVGL APIs are not thread-safe
     if (lvgl_port_lock(0)) {
 
@@ -416,7 +357,9 @@ void app_main(void) {
       // Release the mutex
       lvgl_port_unlock();
     }
-    tx_callback(device);
+
+    packData(dataArray, humidity, temperature, rawSmoke, calSmokeVoltage);
+    transmit_data(device, dataArray, 8);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
   }
 }
@@ -435,7 +378,7 @@ static void custom_adc_calibration_deinit(adc_cali_handle_t handle) {
 static bool custom_adc_calibration_init(adc_unit_t unit, adc_channel_t channel,
                                         adc_atten_t atten,
                                         adc_cali_handle_t *out_handle) {
-  const static char *TAG = "ADC_CALI_INIT";
+  TAG = "ADC_CALI_INIT";
   adc_cali_handle_t handle = NULL;
   esp_err_t ret = ESP_FAIL;
   bool calibrated = false;
