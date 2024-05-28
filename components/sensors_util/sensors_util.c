@@ -58,7 +58,12 @@ void read_sensors(void *pvParameters) {
     dht_read_data(DHT_TYPE_DHT11, DHT_PIN, &humidity, &temperature);
     humidity = humidity / 10;
     temperature = temperature / 10;
-    display_oled(&temperature, &humidity, &rawSmoke, &calSmokeVoltage);
+    // Lock the mutex due to the LVGL APIs are not thread-safe
+    if (lvgl_port_lock(0)) {
+      display_oled(&temperature, &humidity, &rawSmoke, &calSmokeVoltage);
+      // Release the mutex
+      lvgl_port_unlock();
+    }
     packData(dataArray, humidity, temperature, rawSmoke, calSmokeVoltage);
     transmit_data(dataArray, 8);
     vTaskDelay(2000 / portTICK_PERIOD_MS);

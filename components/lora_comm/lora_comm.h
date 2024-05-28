@@ -20,6 +20,8 @@
 #define DIO1 35
 #define DIO2 34
 
+#define TRANSMIT_LED 25
+
 void setup_lora();
 
 void handle_interrupt_task(void *arg);

@@ -32,11 +32,6 @@
 #include "sensors_util.h"
 lv_disp_t *disp;
 
-static bool custom_adc_calibration_init(adc_unit_t unit, adc_channel_t channel,
-                                        adc_atten_t atten,
-                                        adc_cali_handle_t *out_handle);
-static void custom_adc_calibration_deinit(adc_cali_handle_t handle);
-
 char *TAG = "MAIN";
 
 // // LORA START
@@ -47,7 +42,7 @@ TaskHandle_t handle_interrupt;
 
 void app_main(void) {
   ESP_LOGI(TAG, "starting up");
-
+  gpio_set_direction(TRANSMIT_LED, GPIO_MODE_OUTPUT);
   setupOled();
   setup_adc();
 
@@ -56,18 +51,6 @@ void app_main(void) {
   xTaskCreate(read_sensors, "read_sensors", 4096, NULL, 1, NULL);
 
   while (1) {
-
-    // readADC();
-    // rawSmoke = adc_raw[0][0];
-    // calSmokeVoltage = voltage[0][0];
-
-    // Lock the mutex due to the LVGL APIs are not thread-safe
-    if (lvgl_port_lock(0)) {
-
-      // Release the mutex
-      lvgl_port_unlock();
-    }
-
     vTaskDelay(2000 / portTICK_PERIOD_MS);
   }
 }
