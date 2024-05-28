@@ -12,7 +12,8 @@
     "adc_oneshot.h": "c",
     "gpio.h": "c",
     "spi_common.h": "c",
-    "esp_system.h": "c"
+    "esp_system.h": "c",
+    "cstdlib": "c"
   },
   "C_Cpp.errorSquiggles": "enabled",
   "idf.adapterTargetName": "esp32"
