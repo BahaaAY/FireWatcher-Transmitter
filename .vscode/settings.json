@@ -13,7 +13,9 @@
     "gpio.h": "c",
     "spi_common.h": "c",
     "esp_system.h": "c",
-    "cstdlib": "c"
+    "cstdlib": "c",
+    "esp_log.h": "c",
+    "esp_attr.h": "c"
   },
   "C_Cpp.errorSquiggles": "enabled",
   "idf.adapterTargetName": "esp32"
