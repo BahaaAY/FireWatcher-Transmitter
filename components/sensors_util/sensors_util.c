@@ -53,6 +53,7 @@ void read_adc() {
 
 void read_sensors(void *pvParameters) {
   for (;;) {
+    gpio_set_level(TRANSMIT_LED, 1);
     read_adc();
     rawSmoke = adc_raw[0][0];
     dht_read_data(DHT_TYPE_DHT11, DHT_PIN, &humidity, &temperature);
@@ -66,6 +67,7 @@ void read_sensors(void *pvParameters) {
     }
     packData(dataArray, humidity, temperature, rawSmoke, calSmokeVoltage);
     transmit_data(dataArray, 8);
+    gpio_set_level(TRANSMIT_LED, 0);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
   }
 }

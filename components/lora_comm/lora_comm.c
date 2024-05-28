@@ -25,12 +25,11 @@ void handle_interrupt_task(void *arg) {
 
 void tx_callback(sx127x *device) {
   char *TAG = "TX_CALLBACK";
-  gpio_set_level(TRANSMIT_LED, 1);
+
   ESP_LOGI(TAG, "Message Transmitted %d", messages_sent);
   messages_sent++;
   ESP_ERROR_CHECK(
       sx127x_set_opmod(SX127x_MODE_STANDBY, SX127x_MODULATION_FSK, device));
-  gpio_set_level(TRANSMIT_LED, 0);
 }
 
 void packData(uint8_t dataArray[8], int16_t humidity, int16_t temperature,
