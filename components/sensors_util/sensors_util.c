@@ -10,6 +10,8 @@ uint8_t dataArray[8];
 int16_t humidity, temperature;
 int16_t rawSmoke, calSmokeVoltage;
 
+extern QueueHandle_t sensorQueue;
+
 void setup_adc() {
   char *TAG = "ADC_SETUP";
   //-------------ADC2 Init---------------//
@@ -52,6 +54,7 @@ void read_adc() {
 }
 
 void read_sensors(void *pvParameters) {
+  SensorData sensorReading;
   for (;;) {
     gpio_set_level(TRANSMIT_LED, 1);
     read_adc();
@@ -65,8 +68,15 @@ void read_sensors(void *pvParameters) {
       // Release the mutex
       lvgl_port_unlock();
     }
-    packData(dataArray, humidity, temperature, rawSmoke, calSmokeVoltage);
-    transmit_data(dataArray, 8);
+
+    sensorReading.humidity = humidity;
+    sensorReading.temperature = temperature;
+    sensorReading.smoke = rawSmoke;
+    sensorReading.timestamp = esp_log_timestamp();
+    xQueueSend(sensorQueue, &sensorReading, 0);
+
+    // packData(dataArray, humidity, temperature, rawSmoke, calSmokeVoltage);
+    // transmit_data(dataArray, 8);
     gpio_set_level(TRANSMIT_LED, 0);
     vTaskDelay(2000 / portTICK_PERIOD_MS);
   }

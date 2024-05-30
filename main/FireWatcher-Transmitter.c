@@ -40,8 +40,13 @@ sx127x *device = NULL;
 int messages_sent = 0;
 TaskHandle_t handle_interrupt;
 
+QueueHandle_t sensorQueue = NULL;
+
 void app_main(void) {
   ESP_LOGI(TAG, "starting up");
+
+  sensorQueue = xQueueCreate(10, sizeof(SensorData));
+
   gpio_set_direction(TRANSMIT_LED, GPIO_MODE_OUTPUT);
   setupOled();
   setup_adc();

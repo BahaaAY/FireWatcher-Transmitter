@@ -15,7 +15,8 @@
     "esp_system.h": "c",
     "cstdlib": "c",
     "esp_log.h": "c",
-    "esp_attr.h": "c"
+    "esp_attr.h": "c",
+    "lora_comm.h": "c"
   },
   "C_Cpp.errorSquiggles": "enabled",
   "idf.adapterTargetName": "esp32"
