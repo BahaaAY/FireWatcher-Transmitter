@@ -21,5 +21,5 @@
 #define DHT_PIN 23
 
 void setup_adc();
-void read_sensors(void *pvParameters);
+void read_sensors_task(void *pvParameters);
 #endif

@@ -4,6 +4,8 @@ extern sx127x *device;
 extern int messages_sent;
 extern TaskHandle_t handle_interrupt;
 
+extern QueueHandle_t sensorQueue;
+
 void transmit_data(uint8_t data[8], size_t size) {
   char *TAG = "TRANSMIT";
   ESP_LOGI(TAG, "Transmitting");
@@ -117,4 +119,65 @@ void setup_lora() {
   setup_gpio_interrupts((gpio_num_t)DIO0, GPIO_INTR_POSEDGE);
   setup_gpio_interrupts((gpio_num_t)DIO1, GPIO_INTR_NEGEDGE);
   setup_gpio_interrupts((gpio_num_t)DIO2, GPIO_INTR_POSEDGE);
+}
+
+// Function to initialize a random key
+int generate_random_key(unsigned char *key, size_t key_size) {
+  mbedtls_entropy_context entropy;
+  mbedtls_ctr_drbg_context ctr_drbg;
+  const char *personalization = "MyEntropy";
+  int ret;
+
+  mbedtls_entropy_init(&entropy);
+  mbedtls_ctr_drbg_init(&ctr_drbg);
+
+  // Seed and setup entropy source for DRBG
+  ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+                              (const unsigned char *)personalization,
+                              strlen(personalization));
+  if (ret != 0) {
+    printf("Failed in mbedtls_ctr_drbg_seed: %d\n", ret);
+    return ret;
+  }
+
+  // Generate a random key
+  ret = mbedtls_ctr_drbg_random(&ctr_drbg, key, key_size);
+  if (ret != 0) {
+    printf("Failed in mbedtls_ctr_drbg_random: %d\n", ret);
+    return ret;
+  }
+
+  mbedtls_entropy_free(&entropy);
+  mbedtls_ctr_drbg_free(&ctr_drbg);
+  return 0;
+}
+
+void enc_transmit_data_task(void *pvParameters) {
+  char *TAG = "ENC_TRANSMIT";
+
+  SensorData sensorReading;
+  for (;;) {
+
+    ESP_LOGI(TAG, "Transmitting on core %d", xPortGetCoreID());
+    ESP_LOGI(TAG, "Transmitting encrypted data");
+    if (xQueueReceive(sensorQueue, &sensorReading, portMAX_DELAY) != pdTRUE) {
+      ESP_LOGE(TAG, "Failed to receive sensor data");
+
+    } else {
+      gpio_set_level(TRANSMIT_LED, 1);
+      uint8_t dataArray[8];
+      // Lock the mutex due to the LVGL APIs are not thread-safe
+      if (lvgl_port_lock(0)) {
+        display_oled(&sensorReading.temperature, &sensorReading.humidity,
+                     &sensorReading.smoke, &sensorReading.smoke);
+        // Release the mutex
+        lvgl_port_unlock();
+      }
+      packData(dataArray, sensorReading.humidity, sensorReading.temperature,
+               sensorReading.smoke, 0000);
+      transmit_data(dataArray, 8);
+    }
+    gpio_set_level(TRANSMIT_LED, 0);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
 }

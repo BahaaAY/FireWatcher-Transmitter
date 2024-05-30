@@ -53,7 +53,11 @@ void app_main(void) {
 
   setup_lora();
 
-  xTaskCreate(read_sensors, "read_sensors", 4096, NULL, 1, NULL);
+  xTaskCreatePinnedToCore(read_sensors_task, "read_sensors", 4096, NULL, 1,
+                          NULL, 0);
+
+  xTaskCreatePinnedToCore(enc_transmit_data_task, "enc_transmit_data", 4096,
+                          NULL, 1, NULL, 1);
 
   while (1) {
     vTaskDelay(2000 / portTICK_PERIOD_MS);
