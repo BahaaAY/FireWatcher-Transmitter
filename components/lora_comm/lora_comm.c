@@ -1,5 +1,5 @@
 #include "lora_comm.h"
-
+#include "enc_utils.h"
 extern sx127x *device;
 extern int messages_sent;
 extern TaskHandle_t handle_interrupt;
@@ -121,37 +121,6 @@ void setup_lora() {
   setup_gpio_interrupts((gpio_num_t)DIO2, GPIO_INTR_POSEDGE);
 }
 
-// Function to initialize a random key
-int generate_random_key(unsigned char *key, size_t key_size) {
-  mbedtls_entropy_context entropy;
-  mbedtls_ctr_drbg_context ctr_drbg;
-  const char *personalization = "MyEntropy";
-  int ret;
-
-  mbedtls_entropy_init(&entropy);
-  mbedtls_ctr_drbg_init(&ctr_drbg);
-
-  // Seed and setup entropy source for DRBG
-  ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
-                              (const unsigned char *)personalization,
-                              strlen(personalization));
-  if (ret != 0) {
-    printf("Failed in mbedtls_ctr_drbg_seed: %d\n", ret);
-    return ret;
-  }
-
-  // Generate a random key
-  ret = mbedtls_ctr_drbg_random(&ctr_drbg, key, key_size);
-  if (ret != 0) {
-    printf("Failed in mbedtls_ctr_drbg_random: %d\n", ret);
-    return ret;
-  }
-
-  mbedtls_entropy_free(&entropy);
-  mbedtls_ctr_drbg_free(&ctr_drbg);
-  return 0;
-}
-
 void enc_transmit_data_task(void *pvParameters) {
   char *TAG = "ENC_TRANSMIT";
 
@@ -175,7 +144,15 @@ void enc_transmit_data_task(void *pvParameters) {
       }
       packData(dataArray, sensorReading.humidity, sensorReading.temperature,
                sensorReading.smoke, 0000);
-      transmit_data(dataArray, 8);
+
+      // Encrypt the packed data
+      printf("Packed data: ");
+      for (int i = 0; i < 8; i++) {
+        printf("%02x", dataArray[i]);
+      }
+
+      enc_data_and_transmit(dataArray, sizeof(dataArray));
+      // transmit_data(dataArray, 8);
     }
     gpio_set_level(TRANSMIT_LED, 0);
     vTaskDelay(500 / portTICK_PERIOD_MS);

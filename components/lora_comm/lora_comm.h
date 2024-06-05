@@ -44,6 +44,4 @@ void packData(uint8_t dataArray[8], int16_t humidity, int16_t temperature,
 
 void enc_transmit_data_task(void *pvParameters);
 
-int generate_random_key(unsigned char *key, size_t key_size);
-
 #endif
