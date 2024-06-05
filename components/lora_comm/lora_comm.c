@@ -1,8 +1,10 @@
 #include "lora_comm.h"
-
+#include "enc_utils.h"
 extern sx127x *device;
 extern int messages_sent;
 extern TaskHandle_t handle_interrupt;
+
+extern QueueHandle_t sensorQueue;
 
 void transmit_data(uint8_t data[8], size_t size) {
   char *TAG = "TRANSMIT";
@@ -117,4 +119,37 @@ void setup_lora() {
   setup_gpio_interrupts((gpio_num_t)DIO0, GPIO_INTR_POSEDGE);
   setup_gpio_interrupts((gpio_num_t)DIO1, GPIO_INTR_NEGEDGE);
   setup_gpio_interrupts((gpio_num_t)DIO2, GPIO_INTR_POSEDGE);
+}
+
+void enc_transmit_data_task(void *pvParameters) {
+  char *TAG = "ENC_TRANSMIT";
+
+  SensorData sensorReading;
+  for (;;) {
+
+    ESP_LOGI(TAG, "Transmitting on core %d", xPortGetCoreID());
+    ESP_LOGI(TAG, "Transmitting encrypted data");
+    if (xQueueReceive(sensorQueue, &sensorReading, portMAX_DELAY) != pdTRUE) {
+      ESP_LOGE(TAG, "Failed to receive sensor data");
+
+    } else {
+      gpio_set_level(TRANSMIT_LED, 1);
+      uint8_t dataArray[8];
+      // Lock the mutex due to the LVGL APIs are not thread-safe
+      if (lvgl_port_lock(0)) {
+        display_oled(&sensorReading.temperature, &sensorReading.humidity,
+                     &sensorReading.smoke, &sensorReading.smoke);
+        // Release the mutex
+        lvgl_port_unlock();
+      }
+      packData(dataArray, sensorReading.humidity, sensorReading.temperature,
+               sensorReading.smoke, 0000);
+
+      // Encrypt the packed data
+
+      enc_data_and_transmit(dataArray, sizeof(dataArray));
+    }
+    gpio_set_level(TRANSMIT_LED, 0);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+  }
 }

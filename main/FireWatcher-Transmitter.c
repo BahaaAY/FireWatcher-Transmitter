@@ -40,15 +40,24 @@ sx127x *device = NULL;
 int messages_sent = 0;
 TaskHandle_t handle_interrupt;
 
+QueueHandle_t sensorQueue = NULL;
+
 void app_main(void) {
   ESP_LOGI(TAG, "starting up");
+
+  sensorQueue = xQueueCreate(10, sizeof(SensorData));
+
   gpio_set_direction(TRANSMIT_LED, GPIO_MODE_OUTPUT);
   setupOled();
   setup_adc();
 
   setup_lora();
 
-  xTaskCreate(read_sensors, "read_sensors", 4096, NULL, 1, NULL);
+  xTaskCreatePinnedToCore(read_sensors_task, "read_sensors", 4096, NULL, 1,
+                          NULL, 0);
+
+  xTaskCreatePinnedToCore(enc_transmit_data_task, "enc_transmit_data", 4096,
+                          NULL, 1, NULL, 1);
 
   while (1) {
     vTaskDelay(2000 / portTICK_PERIOD_MS);
