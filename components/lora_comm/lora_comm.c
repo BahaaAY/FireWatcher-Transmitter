@@ -146,13 +146,8 @@ void enc_transmit_data_task(void *pvParameters) {
                sensorReading.smoke, 0000);
 
       // Encrypt the packed data
-      printf("Packed data: ");
-      for (int i = 0; i < 8; i++) {
-        printf("%02x", dataArray[i]);
-      }
 
       enc_data_and_transmit(dataArray, sizeof(dataArray));
-      // transmit_data(dataArray, 8);
     }
     gpio_set_level(TRANSMIT_LED, 0);
     vTaskDelay(500 / portTICK_PERIOD_MS);
